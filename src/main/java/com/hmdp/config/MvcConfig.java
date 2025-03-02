@@ -6,6 +6,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import com.hmdp.interceptor.LoginInterceptor;
+import com.hmdp.interceptor.RefreshTokenInterceptor;
 
 import jakarta.annotation.Resource;
 
@@ -17,7 +18,9 @@ public class MvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new LoginInterceptor(stringRedisTemplate))
+        registry.addInterceptor(new RefreshTokenInterceptor(stringRedisTemplate)).addPathPatterns("/**").order(0);
+
+        registry.addInterceptor(new LoginInterceptor())
                 .excludePathPatterns(
                     "/user/code",
                     "/user/login",
@@ -26,6 +29,7 @@ public class MvcConfig implements WebMvcConfigurer {
                     "/shop-type/**",
                     "/upload/**",
                     "/voucher/**"
-                );
+                ).order(1);
+                
     }
 }
