@@ -1,8 +1,11 @@
 package com.hmdp.utils;
 
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.BooleanUtil;
@@ -18,7 +21,14 @@ public class SimpleRedisLock implements ILock {
     }
 
     private static final String KEY_PREFIX = "lock:";
-    private static final String ID_PREFIX = UUID.randomUUID().toString(true) + '-'; // 用于区别分布式系统下的不同机器
+    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
+    static {
+        UNLOCK_SCRIPT = new DefaultRedisScript<>();
+        UNLOCK_SCRIPT.setLocation(new ClassPathResource("unlock.lua"));
+        UNLOCK_SCRIPT.setResultType(Long.class);
+    }
+
+    private final String ID_PREFIX = UUID.randomUUID().toString(true) + '-'; // 用于区别分布式系统下的不同机器
 
     @Override
     public boolean tryLock(Long timeoutSec) {
@@ -30,10 +40,12 @@ public class SimpleRedisLock implements ILock {
 
     @Override
     public void unlock() {
-        String threadId = ID_PREFIX + Thread.currentThread().threadId();
-        String id = stringRedisTemplate.opsForValue().get(KEY_PREFIX + name);
-        if (threadId.equals(id)) {
-            stringRedisTemplate.delete(KEY_PREFIX + name);
-        }
+        // 调用 lua 脚本, 原子性地完成锁的检查和删除操作
+        // <T> T execute(RedisScript<T> script, List<K> keys, Object... args)
+        stringRedisTemplate.execute(
+            UNLOCK_SCRIPT,
+            Collections.singletonList(KEY_PREFIX + name),
+            ID_PREFIX + Thread.currentThread().threadId()
+        );
     }
 }
