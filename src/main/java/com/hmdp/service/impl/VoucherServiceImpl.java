@@ -14,6 +14,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
+import static com.hmdp.utils.RedisConstants.SECKILL_BEGINTIME_KEY;
+import static com.hmdp.utils.RedisConstants.SECKILL_ENDTIME_KEY;
+
 
 // import javax.annotation.Resource;
 import java.util.List;
@@ -48,14 +51,18 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     public void addSeckillVoucher(Voucher voucher) {
         // 保存优惠券
         save(voucher);
-        // 保存秒杀信息
+
+        // 保存秒杀信息到数据库中
         SeckillVoucher seckillVoucher = new SeckillVoucher();
         seckillVoucher.setVoucherId(voucher.getId());
         seckillVoucher.setStock(voucher.getStock());
         seckillVoucher.setBeginTime(voucher.getBeginTime());
         seckillVoucher.setEndTime(voucher.getEndTime());
         seckillVoucherService.save(seckillVoucher);
-        // 保存秒杀库存到 redis 中
+        
+        // 保存秒杀信息到 redis 中
         stringRedisTemplate.opsForValue().set(SECKILL_STOCK_KEY + voucher.getId(), voucher.getStock().toString());
+        stringRedisTemplate.opsForValue().set(SECKILL_BEGINTIME_KEY + voucher.getId(), voucher.getBeginTime().toString());
+        stringRedisTemplate.opsForValue().set(SECKILL_ENDTIME_KEY + voucher.getId(), voucher.getEndTime().toString());
     }
 }
