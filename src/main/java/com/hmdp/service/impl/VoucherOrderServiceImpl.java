@@ -179,8 +179,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
      */
     private void handleVoucherOrder(VoucherOrder voucherOrder) {
         Long userId = voucherOrder.getUserId();
+        Long voucherId = voucherOrder.getVoucherId();
         
-        RLock lock = redissonClient.getLock("lock:order:" + userId);
+        RLock lock = redissonClient.getLock("lock:order:" + voucherId + ":" + userId);
         boolean getLock = lock.tryLock();
         if (!getLock) {
             log.error("不允许重复下单!");
