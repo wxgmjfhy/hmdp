@@ -17,9 +17,11 @@ import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
 import static com.hmdp.utils.RedisConstants.SECKILL_BEGINTIME_KEY;
 import static com.hmdp.utils.RedisConstants.SECKILL_ENDTIME_KEY;
 
-
+import java.time.Duration;
+import java.time.LocalDateTime;
 // import javax.annotation.Resource;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * <p>
@@ -40,9 +42,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
 
     @Override
     public Result queryVoucherOfShop(Long shopId) {
-        // 查询优惠券信息
         List<Voucher> vouchers = getBaseMapper().queryVoucherOfShop(shopId);
-        // 返回结果
         return Result.ok(vouchers);
     }
 
@@ -52,7 +52,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         // 保存优惠券
         save(voucher);
 
-        // 保存秒杀信息到数据库中
+        // 保存秒杀优惠券到数据库中
         SeckillVoucher seckillVoucher = new SeckillVoucher();
         seckillVoucher.setVoucherId(voucher.getId());
         seckillVoucher.setStock(voucher.getStock());
@@ -60,9 +60,19 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         seckillVoucher.setEndTime(voucher.getEndTime());
         seckillVoucherService.save(seckillVoucher);
         
-        // 保存秒杀信息到 redis 中
+        // 保存秒杀优惠券到 redis 中
         stringRedisTemplate.opsForValue().set(SECKILL_STOCK_KEY + voucher.getId(), voucher.getStock().toString());
         stringRedisTemplate.opsForValue().set(SECKILL_BEGINTIME_KEY + voucher.getId(), voucher.getBeginTime().toString());
         stringRedisTemplate.opsForValue().set(SECKILL_ENDTIME_KEY + voucher.getId(), voucher.getEndTime().toString());
+
+        // 计算有效时间
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime endTime = voucher.getEndTime();
+        long expireTime = Duration.between(now, endTime).getSeconds();
+
+        // 设置过期时间
+        stringRedisTemplate.expire(SECKILL_STOCK_KEY + voucher.getId(), expireTime, TimeUnit.SECONDS);
+        stringRedisTemplate.expire(SECKILL_BEGINTIME_KEY + voucher.getId(), expireTime, TimeUnit.SECONDS);
+        stringRedisTemplate.expire(SECKILL_ENDTIME_KEY + voucher.getId(), expireTime, TimeUnit.SECONDS);
     }
 }

@@ -39,7 +39,7 @@ public class Voucher implements Serializable {
     private Long shopId;
 
     /**
-     * 代金券标题
+     * 优惠券标题
      */
     private String title;
 
@@ -69,9 +69,12 @@ public class Voucher implements Serializable {
     private Integer type;
 
     /**
-     * 优惠券类型
+     * 优惠券状态
      */
     private Integer status;
+
+    // 以下三个属性是秒杀优惠券特有的
+
     /**
      * 库存
      */

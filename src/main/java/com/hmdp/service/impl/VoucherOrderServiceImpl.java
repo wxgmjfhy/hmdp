@@ -42,13 +42,12 @@ import static com.hmdp.utils.RedisConstants.SECKILL_BEGINTIME_KEY;
 import static com.hmdp.utils.RedisConstants.SECKILL_ENDTIME_KEY;
 
 
-/**
- * <p>
- *  服务实现类
- * </p>
- *
- * @author 虎哥
- * @since 2021-12-22
+/*
+ * 在 lua 脚本中, 就检查了库存和一人一单, 
+ * 保证了一个用户对一个秒杀券的订单只会在库存充足的情况下创建, 并且只发送给消息队列一次
+ * 
+ * 所以, 在进行创建订单相关数据库操作前使用 Redisson 分布式锁保证一人一单, 
+ * 以及创建订单时进行数据库查询保证一人一单和使用乐观锁保证库存的这几个操作可能不太必要, 只是兜底操作
  */
 @Slf4j
 @Service
@@ -73,6 +72,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SECKILL_SCRIPT.setResultType(Long.class);
     }
 
+    /*
+     * 独立线程, 监听消息队列, 异步完成创建订单相关数据库操作
+     */
     private static final ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
 
     @PostConstruct
@@ -201,6 +203,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         String beginTimeStr = stringRedisTemplate.opsForValue().get(SECKILL_BEGINTIME_KEY + voucherId);
         String endTimeStr = stringRedisTemplate.opsForValue().get(SECKILL_ENDTIME_KEY + voucherId);
 
+        // 如果是 null, 说明已经过期
         if (beginTimeStr == null || endTimeStr == null) {
             return false;
         }
@@ -241,7 +244,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     /*
      * 创建订单相关数据库操作
-     * 可能有减少库存和存储秒杀卷两个数据库操作, 采用事务管理
+     * 可能有减少库存和保存订单两个数据库操作, 采用事务管理
      */
     @Override
     @Transactional
