@@ -42,13 +42,6 @@ import static com.hmdp.utils.RedisConstants.SECKILL_BEGINTIME_KEY;
 import static com.hmdp.utils.RedisConstants.SECKILL_ENDTIME_KEY;
 
 
-/*
- * 在 lua 脚本中, 就检查了库存和一人一单, 
- * 保证了一个用户对一个秒杀券的订单只会在库存充足的情况下创建, 并且只发送给消息队列一次
- * 
- * 所以, 在进行创建订单相关数据库操作前使用 Redisson 分布式锁保证一人一单, 
- * 以及创建订单时进行数据库查询保证一人一单和使用乐观锁保证库存的这几个操作可能不太必要, 只是兜底操作
- */
 @Slf4j
 @Service
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
@@ -85,7 +78,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     /*
      * 基于 redis stream 的消息队列
      * 非异常情况下, 一直处理最新的消息
-     * 异常情况下, 从最早的消息开始处理, 确保处理到已消费但未确认的消息
+     * 出现异常情况, 去处理 pending list 中的消息直至 pending list 为空
+     * 备注: 指定 id 为 0 (就是不指定最新消息), 即会获取 pending list 中的消息
      */
     private class VoucherOrderHandler implements Runnable {
         private final String QUEUE_NAME = "stream.orders";
@@ -138,6 +132,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     stringRedisTemplate.opsForStream().acknowledge(QUEUE_NAME, "g1", record.getId());                    
                 } catch (Exception e) {
                     log.error("创建订单异常", e);
+                    // 出现异常情况, 去处理 pending list 中的消息
                     handlePendingList();
                 }
             }
@@ -146,6 +141,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         public void handlePendingList() {
             while (true) {
                 try {
+                    // 获取 pending list 中的订单信息
                     @SuppressWarnings("unchecked")
                     List<MapRecord<String, Object, Object> > list = stringRedisTemplate.opsForStream().read(
                             Consumer.from("g1", "c1"),
@@ -157,15 +153,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                         break;
                     }
 
-                    // 解析数据
                     MapRecord<String, Object, Object> record = list.get(0);
                     Map<Object, Object> value = record.getValue();
                     VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(value, new VoucherOrder(), true);
 
-                    // 创建订单
                     handleVoucherOrder(voucherOrder);
                     
-                    // 确认消息
                     stringRedisTemplate.opsForStream().acknowledge(QUEUE_NAME, "g1", record.getId());       
                 } catch (Exception e) {
                     log.error("创建订单异常", e);
