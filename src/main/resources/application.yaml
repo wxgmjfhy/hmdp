@@ -27,6 +27,43 @@ spring:
   jackson:
     default-property-inclusion: NON_NULL # JSON 处理时忽略 null
 
+  rabbitmq:
+    host: ${WSL_IP}
+    port: 5672
+    virtual-host: /
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+
+    # 配置消费者监听器
+    listener:
+      simple:
+        # 每次只能获取一条消息，处理完成才能获取下一个消息
+        prefetch: 1
+
+        # 自动 ack
+        acknowledge-mode: auto
+
+        # 消息处理失败, 本地重试机制; 重试达到最大次数后, 将失败信息投递到指定的交换机
+        retry:
+          enabled: true
+          initial-interval: 1000ms
+          multiplier: 1
+          max-attempts: 3
+          stateless: true
+
+    # 生产者超时重试
+    connection-timeout: 1s # 设置 mq 的连接超时时间
+    template:
+      retry:
+        enabled: true # 开启超时重试机制
+        initial-interval: 1000ms # 失败后的初始等待时间
+        multiplier: 1 # 失败后下次的等待时间倍数
+        max-attempts: 3 # 最大重试次数
+
+    # 生产者确认机制
+    publisher-confirm-type: correlated # 开启 publisher confirm 机制, 模式为 correlated: mq 异步回调返回回执
+    publisher-returns: true # 开启 publisher return 机制
+
 mybatis-plus:
   type-aliases-package: com.hmdp.entity # 别名扫描包
   configuration:
