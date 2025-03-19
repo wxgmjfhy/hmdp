@@ -37,10 +37,19 @@ spring:
     # 配置消费者监听器
     listener:
       simple:
-        # 每次只能获取一条消息，处理完成才能获取下一个消息
+        # 监听器容器的并发消费者数量初始值为 5
+        concurrency: 5
+
+        # 监听器容器的最大并发消费者数量为 10
+        max-concurrency: 10
+
+        # 每个消费者每次只能获取一条消息，处理完成才能获取下一个消息
         prefetch: 1
 
-        # 自动 ack
+        # 项目启动时启动监听器容器
+        auto-startup: true
+
+        # 根据情况, 自动 ack/nack/reject
         acknowledge-mode: auto
 
         # 消息处理失败, 本地重试机制; 重试达到最大次数后, 将失败信息投递到指定的交换机
