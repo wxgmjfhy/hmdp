@@ -2,8 +2,8 @@ package com.hmdp.service.impl;
 
 import com.hmdp.dto.Result;
 import com.hmdp.entity.VoucherOrder;
+import com.hmdp.event.VoucherOrderMessageEvent;
 import com.hmdp.mapper.VoucherOrderMapper;
-import com.hmdp.sender.SeckillMessageSender;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIdWorker;
@@ -17,6 +17,9 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -39,15 +42,15 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private ISeckillVoucherService seckillVoucherService;
 
-    @Resource
-    private SeckillMessageSender seckillMessageSender;
-
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
     static {
         SECKILL_SCRIPT = new DefaultRedisScript<>();
         SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
         SECKILL_SCRIPT.setResultType(Long.class);
     }
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /*
      * 检查秒杀时间
@@ -69,9 +72,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     /*
-     * 检查秒杀资格
-     * 有资格则会原子性地减少库存, 记录下单
-     * 然后发送订单消息到 mq
+     * 检查秒杀资格, 有资格则会原子性地减少库存, 记录下单
+     * 然后发布事件
      */
     @Override
     public Result seckillVoucher(Long voucherId) {
@@ -92,7 +94,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail(result == 1 ? "库存不足!" : "不允许重复下单!");
         }
 
-        // 发送订单到消息队列
+        // 封装订单
         Long orderId = redisIdWorker.nextId("order:seckillVoucher");
 
         VoucherOrder voucherOrder = new VoucherOrder();
@@ -100,7 +102,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         voucherOrder.setUserId(userId);
         voucherOrder.setId(orderId);
 
-        seckillMessageSender.sendVoucherOrder(voucherOrder);
+        // 发布事件
+        eventPublisher.publishEvent(new VoucherOrderMessageEvent(this, voucherOrder));
 
         return Result.ok(orderId);
     }
