@@ -1,5 +1,6 @@
 package com.hmdp.task;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,7 +15,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 定时扫描数据库, 处理死信
+ * 定时扫描数据库, 处理死信和长时间未处理的消息
  */
 @Slf4j
 @Component
@@ -29,7 +30,7 @@ public class MessageTask {
     @Scheduled(fixedRate = 3600000)
     public void handleErrorMessage() {
         List<LocalMessage> errorMessages = localMessageService.lambdaQuery()
-            .eq(LocalMessage::getStatus, -1)
+            .eq(LocalMessage::getStatus, MessageConstants.DEAD)
             .list();
 
         if (errorMessages == null || errorMessages.isEmpty()) {
@@ -46,7 +47,7 @@ public class MessageTask {
                 } else {
                     // 更新重发次数, 重置其余数据, 重新发送
                     localMessageService.lambdaUpdate()
-                        .set(LocalMessage::getStatus, 0)
+                        .set(LocalMessage::getStatus, MessageConstants.UNPROCESSED)
                         .set(LocalMessage::getRetryTimes, 0)
                         .set(LocalMessage::getResendTimes, resendTimes + 1)
                         .eq(LocalMessage::getId, localMessage.getId())
@@ -54,7 +55,28 @@ public class MessageTask {
                     messageSender.send(localMessage);
                 }
             } catch (Exception e) {
-                log.error("死信 {} 处理异常", localMessage.getId(), e);
+                log.error("定时任务中, 死信 {} 处理异常", localMessage.getId(), e);
+            }
+        });
+    }
+
+    @Scheduled(fixedRate = 3600000)
+    public void handleLongPendingMessage() {
+        List<LocalMessage> longPendingMessages = localMessageService.lambdaQuery()
+            .eq(LocalMessage::getStatus, MessageConstants.UNPROCESSED)
+            .lt(LocalMessage::getCreateTime, LocalDateTime.now().minusHours(MessageConstants.MAX_PENDING_HOUR))
+            .list();
+
+        if (longPendingMessages == null || longPendingMessages.isEmpty()) {
+            return;
+        }
+
+        longPendingMessages.forEach(localMessage -> {
+            try {
+                localMessageService.removeById(localMessage.getId());
+                messageSender.sendErrorMessage(localMessage);
+            } catch (Exception e) {
+                log.error("定时任务中, 长时间未处理的消息 {} 处理异常", localMessage.getId(), e);
             }
         });
     }

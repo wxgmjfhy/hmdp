@@ -12,6 +12,7 @@ import com.hmdp.event.VoucherOrderMessageEvent;
 import com.hmdp.mqListener.VoucherOrderMessageListener;
 import com.hmdp.mqSender.MessageSender;
 import com.hmdp.service.ILocalMessageService;
+import com.hmdp.utils.MessageConstants;
 import com.hmdp.utils.RedisIdWorker;
 
 import cn.hutool.json.JSONUtil;
@@ -47,7 +48,7 @@ public class LocalMessageEventListener {
         localMessage.setMessageBody(JSONUtil.toJsonStr(voucherOrder));
         localMessage.setExchangeName(VoucherOrderMessageListener.QUEUE_NAME);
         localMessage.setRoutingKey(VoucherOrderMessageListener.ROUTINGKEY_NAME);
-        localMessage.setStatus(0);
+        localMessage.setStatus(MessageConstants.UNPROCESSED);
         localMessage.setRetryTimes(0);
         localMessage.setResendTimes(0);
         localMessage.setCreateTime(LocalDateTime.now());

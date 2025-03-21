@@ -18,6 +18,7 @@ import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.MessageConstants;
 import com.rabbitmq.client.Channel;
 
+import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -46,60 +47,77 @@ public class VoucherOrderMessageListener {
     ))
     public void listenVoucherOrder(Long localMessageId, Channel channel, Message message) throws IOException {
         long deliverTag = message.getMessageProperties().getDeliveryTag();
-        LocalMessage localMessage = localMessageService.getById(localMessageId);
 
+        LocalMessage localMessage = localMessageService.getById(localMessageId);
         if (localMessage == null) {
-            log.error("消息不存在");
-            channel.basicReject(deliverTag, false);
+            log.error("消息 {} 不存在", localMessageId);
+            channel.basicAck(deliverTag, false);
             return;
         }
 
-        VoucherOrder voucherOrder = JSONUtil.toBean(localMessage.getMessageBody(), VoucherOrder.class);
         Integer status = localMessage.getStatus();
-
-        // 消息为未处理状态
-        if (status == 0) {
-            try {
-                handleVoucherOrder(voucherOrder, localMessageId);
-            } catch (Exception e) {
-                log.error("消息 {} 处理失败", localMessage.getId(), e);
-                
-                try {
-                    Integer retryTimes = localMessage.getRetryTimes() + 1;
-                    if (retryTimes >= MessageConstants.MAX_RESEND_TIMES) {
-                        // 达到这次发送的最大重试次数, 拒绝消息不再入队, 设置为死信
-                        channel.basicReject(deliverTag, false);
-                        localMessageService.lambdaUpdate()
-                            .set(LocalMessage::getStatus, -1)
-                            .eq(LocalMessage::getId, localMessageId)
-                            .update();
-                    } else {
-                        // 重新入队, 更新这次发送的重试次数
-                        channel.basicNack(deliverTag, false, true);
-                        localMessageService.lambdaUpdate()
-                            .set(LocalMessage::getRetryTimes, retryTimes)
-                            .eq(LocalMessage::getId, localMessageId)
-                            .update();
-                    }
-                } catch (Exception exception) {
-                    log.error("更新处理失败的消息 {} 的状态失败", localMessage.getId(), exception);
-                }
-                
-                return;
-            }
+        if (status != MessageConstants.UNPROCESSED) {
+            log.info("消息 {} {}", localMessageId, (status == MessageConstants.DEAD ? "已死亡" : "已处理"));
+            channel.basicAck(deliverTag, false);
+            return;
         }
 
-        channel.basicAck(deliverTag, false);
+        boolean returnToMQ = false;
+        try {
+            VoucherOrder voucherOrder = JSONUtil.toBean(localMessage.getMessageBody(), VoucherOrder.class);
+            handleVoucherOrder(voucherOrder, localMessageId);
+        } catch (Exception e) {
+            log.error("消息 {} 处理失败", localMessageId, e);
+            Integer retryTimes = localMessage.getRetryTimes() + 1;
+            returnToMQ = updateRetryTimes(localMessageId, retryTimes, channel, deliverTag);
+        }
+
+        if (BooleanUtil.isTrue(returnToMQ)) {
+            // 重新入队
+            channel.basicNack(deliverTag, false, true);
+        } else {
+            // 不入队
+            channel.basicAck(deliverTag, false);
+        }
+    }
+
+    private boolean updateRetryTimes(Long localMessageId, Integer retryTimes, Channel channel, long deliverTag) throws IOException {
+        try {
+            localMessageService.lambdaUpdate()
+                .set(LocalMessage::getRetryTimes, retryTimes)
+                .eq(LocalMessage::getId, localMessageId)
+                .update();
+
+            if (retryTimes >= MessageConstants.MAX_RETRY_TIMES) {
+                // 更新消息状态为已死亡
+                localMessageService.lambdaUpdate()
+                    .set(LocalMessage::getStatus, MessageConstants.DEAD)
+                    .eq(LocalMessage::getId, localMessageId)
+                    .update();
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("更新消息 {} 重试次数失败", localMessageId, e);
+            return false;
+        }
+
+        return true;
     }
 
     @Transactional(rollbackFor = Exception.class)
     private void handleVoucherOrder(VoucherOrder voucherOrder, Long localMessageId) {
-        voucherOrderService.createVoucherOrder(voucherOrder);
-        // 更新消息状态为已处理
-        localMessageService.lambdaUpdate()
-            .set(LocalMessage::getStatus, 1)
-            .eq(LocalMessage::getId, localMessageId)
-            .update();
+        try {
+            // 创建订单
+            voucherOrderService.createVoucherOrder(voucherOrder);
+            // 更新消息状态为已处理
+            localMessageService.lambdaUpdate()
+                .set(LocalMessage::getStatus, MessageConstants.PROCESSED)
+                .eq(LocalMessage::getId, localMessageId)
+                .update();
+        } catch (Exception e) {
+            log.error("处理消息 {} 时数据库操作失败", localMessageId, e);
+            throw e;
+        }
     }
     
 }
