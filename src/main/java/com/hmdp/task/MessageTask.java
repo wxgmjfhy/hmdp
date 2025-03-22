@@ -15,7 +15,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 定时扫描数据库, 处理死信和长时间未处理的消息
+ * 定时扫描数据库
  */
 @Slf4j
 @Component
@@ -27,57 +27,42 @@ public class MessageTask {
     @Resource
     private MessageSender messageSender;
 
+    /**
+     * TODO 选择合适的周期
+     * TODO 优化扫库效率
+     * TODO 批量发送消息
+     */
     @Scheduled(fixedRate = 3600000)
-    public void handleErrorMessage() {
-        List<LocalMessage> errorMessages = localMessageService.lambdaQuery()
-            .eq(LocalMessage::getStatus, MessageConstants.DEAD)
+    public void handleUnprocessedMessage() {
+        List<LocalMessage> unprocessedMessages = localMessageService.lambdaQuery()
+            .eq(LocalMessage::getStatus, MessageConstants.UNPROCESSED)
+            .lt(LocalMessage::getCreateTime, LocalDateTime.now().minusMinutes(1))
             .list();
 
-        if (errorMessages == null || errorMessages.isEmpty()) {
+        if (unprocessedMessages == null || unprocessedMessages.isEmpty()) {
             return;
         }
 
-        errorMessages.forEach(localMessage -> {
+        unprocessedMessages.forEach(localMessage -> {
             try {
-                Integer resendTimes = localMessage.getResendTimes();
-                if (resendTimes >= MessageConstants.MAX_RESEND_TIMES) {
-                    // 达到最大重发次数, 删除记录, 发送到死信队列人工处理
-                    localMessageService.removeById(localMessage.getId());
-                    messageSender.sendErrorMessage(localMessage);
-                } else {
-                    // 更新重发次数, 重置其余数据, 重新发送
+                Integer sendTimes = localMessage.getSendTimes() + 1;
+                if (sendTimes > MessageConstants.MAX_SEND_TIMES) {
                     localMessageService.lambdaUpdate()
-                        .set(LocalMessage::getStatus, MessageConstants.UNPROCESSED)
-                        .set(LocalMessage::getRetryTimes, 0)
-                        .set(LocalMessage::getResendTimes, resendTimes + 1)
+                        .set(LocalMessage::getStatus, MessageConstants.DEAD)
                         .eq(LocalMessage::getId, localMessage.getId())
                         .update();
-                    messageSender.send(localMessage);
+                    messageSender.sendDeadMessage(localMessage);
+                } else {
+                    localMessageService.lambdaUpdate()
+                        .set(LocalMessage::getSendTimes, sendTimes)
+                        .eq(LocalMessage::getId, localMessage.getId())
+                        .update();
+                    messageSender.sendMessage(localMessage);
                 }
             } catch (Exception e) {
-                log.error("定时任务中, 死信 {} 处理异常", localMessage.getId(), e);
+                log.error("定时任务中, 消息 {} 处理异常", localMessage.getId(), e);
             }
         });
     }
 
-    @Scheduled(fixedRate = 3600000)
-    public void handleLongPendingMessage() {
-        List<LocalMessage> longPendingMessages = localMessageService.lambdaQuery()
-            .eq(LocalMessage::getStatus, MessageConstants.UNPROCESSED)
-            .lt(LocalMessage::getCreateTime, LocalDateTime.now().minusHours(MessageConstants.MAX_PENDING_HOUR))
-            .list();
-
-        if (longPendingMessages == null || longPendingMessages.isEmpty()) {
-            return;
-        }
-
-        longPendingMessages.forEach(localMessage -> {
-            try {
-                localMessageService.removeById(localMessage.getId());
-                messageSender.sendErrorMessage(localMessage);
-            } catch (Exception e) {
-                log.error("定时任务中, 长时间未处理的消息 {} 处理异常", localMessage.getId(), e);
-            }
-        });
-    }
 }

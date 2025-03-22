@@ -16,19 +16,19 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Component
-public class ErrorMessageListener {
+public class DeadMessageListener {
 
-    public static final String QUEUE_NAME = "hmdp.error.queue";
-    public static final String EXCHANGE_NAME = "hmdp.error.direct";
-    public static final String ROUTINGKEY_NAME = "error";
+    public static final String EXCHANGE_NAME = "hmdp.dead.direct";
+    public static final String QUEUE_NAME = "hmdp.dead.queue";
+    public static final String ROUTINGKEY_NAME = "dead";
 
     @RabbitListener(bindings = @QueueBinding(
         value = @Queue(name = QUEUE_NAME),
         exchange = @Exchange(name = EXCHANGE_NAME, type = ExchangeTypes.TOPIC),
         key = ROUTINGKEY_NAME
     ))
-    public void listenErrorMessage(LocalMessage localMessage) {
-        // TODO: 人工处理
+    public void listenDeadMessage(LocalMessage localMessage) {
+        // TODO 人工处理
         log.error("需要人工处理死信: {}", localMessage);
     }
 }

@@ -5,7 +5,7 @@ import org.springframework.context.ApplicationEvent;
 import com.hmdp.entity.VoucherOrder;
 
 /**
- * 秒杀优惠券订单 事件类
+ * 秒杀优惠券订单 - 消息 - 事件类
  */
 public class VoucherOrderMessageEvent extends ApplicationEvent {
 

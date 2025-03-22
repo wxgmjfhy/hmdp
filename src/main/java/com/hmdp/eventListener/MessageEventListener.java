@@ -20,11 +20,11 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 事件监听器
+ * 消息事件监听器
  */
 @Slf4j
 @Component
-public class LocalMessageEventListener {
+public class MessageEventListener {
 
     @Resource
     private RedisIdWorker redisIdWorker;
@@ -36,11 +36,11 @@ public class LocalMessageEventListener {
     private MessageSender messageSender;
 
     /**
-     * 监听 秒杀优惠券订单 事件
+     * 监听 秒杀优惠券订单 - 消息 - 事件
      */
     @Async
     @EventListener
-    public void handleVoucherOrderMessageEvent(VoucherOrderMessageEvent event) {
+    public void listenVoucherOrderMessageEvent(VoucherOrderMessageEvent event) {
         VoucherOrder voucherOrder = event.getVoucherOrder();
 
         LocalMessage localMessage = new LocalMessage();
@@ -49,17 +49,19 @@ public class LocalMessageEventListener {
         localMessage.setExchangeName(VoucherOrderMessageListener.QUEUE_NAME);
         localMessage.setRoutingKey(VoucherOrderMessageListener.ROUTINGKEY_NAME);
         localMessage.setStatus(MessageConstants.UNPROCESSED);
-        localMessage.setRetryTimes(0);
-        localMessage.setResendTimes(0);
+        localMessage.setSendTimes(MessageConstants.INIT_SEND_TIME);
         localMessage.setCreateTime(LocalDateTime.now());
 
+        saveAndSendMessage(localMessage);
+    }
+
+    // TODO 实现重试机制
+    private void saveAndSendMessage(LocalMessage localMessage) {
         try {
-            // 保存消息到数据库
             messageService.save(localMessage);
-            // 发送消息
-            messageSender.send(localMessage);
+            messageSender.sendMessage(localMessage);
         } catch (Exception e) {
             log.error("保存消息到本地消息表异常", e);
-        }        
+        }
     }
 }

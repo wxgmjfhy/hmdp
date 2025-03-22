@@ -52,6 +52,14 @@ spring:
         # 手动 ack
         acknowledge-mode: manual
 
+        # 消费者重试机制
+        retry:
+          enabled: true
+          initial-interval: 1000ms
+          multiplier: 1
+          max-attempts: 3
+          stateless: true
+
 mybatis-plus:
   type-aliases-package: com.hmdp.entity # 别名扫描包
   configuration:

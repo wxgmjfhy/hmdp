@@ -46,14 +46,9 @@ public class LocalMessage implements Serializable {
     private Integer status;
 
     /**
-     * 重试次数
+     * 发送次数
      */
-    private Integer retryTimes;
-
-    /**
-     * 重发次数
-     */
-    private Integer resendTimes;
+    private Integer sendTimes;
 
     /**
      * 创建时间

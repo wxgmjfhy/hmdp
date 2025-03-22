@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import lombok.extern.slf4j.Slf4j;
 
 import com.hmdp.entity.LocalMessage;
-import com.hmdp.mqListener.ErrorMessageListener;
+import com.hmdp.mqListener.DeadMessageListener;
 
 /**
  * 消息发送类
@@ -22,7 +22,7 @@ public class MessageSender {
     /**
      * 发送消息
      */
-    public void send(LocalMessage localMessage) {
+    public void sendMessage(LocalMessage localMessage) {
         try {
             log.info("发送消息: {}", localMessage);
             rabbitTemplate.convertAndSend(localMessage.getExchangeName(), localMessage.getRoutingKey(), localMessage.getId());
@@ -34,10 +34,10 @@ public class MessageSender {
     /**
      * 发送死信
      */
-    public void sendErrorMessage(LocalMessage localMessage) {
+    public void sendDeadMessage(LocalMessage localMessage) {
         try {
             log.info("发送死信: {}", localMessage);
-            rabbitTemplate.convertAndSend(ErrorMessageListener.EXCHANGE_NAME, ErrorMessageListener.ROUTINGKEY_NAME, localMessage);
+            rabbitTemplate.convertAndSend(DeadMessageListener.EXCHANGE_NAME, DeadMessageListener.ROUTINGKEY_NAME, localMessage);
         } catch (Exception e) {
             log.error("发送死信 {} 异常", localMessage.getId(), e);
         }
