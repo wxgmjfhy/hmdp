@@ -1282,3 +1282,14 @@ CREATE TABLE `tb_voucher_order`  (
 -- ----------------------------
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+CREATE TABLE `tb_message` (
+  `id` bigint(20) UNSIGNED NOT NULL COMMENT '消息 id, 唯一',
+  `message_body` varchar(2048) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息体',
+  `exchange_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '交换机',
+  `routing_key` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '路由',
+  `status` int(8) UNSIGNED NOT NULL COMMENT '消息状态',
+  `send_times` int(8) UNSIGNED NULL DEFAULT 1 COMMENT '发送次数',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
